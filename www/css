@@ -2,7 +2,6 @@
 use strict;
 use diagnostics;
 use warnings FATAL => 'all', NONFATAL => 'redefine';
-use warnings;
 use utf8;
 use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
 use CGI qw(:standard escape escapeHTML);

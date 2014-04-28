@@ -1,9 +1,12 @@
 #!/usr/bin/perl -w
-
 use strict;
-use warnings;
+use diagnostics;
+use warnings FATAL => 'all', NONFATAL => 'redefine';
+use utf8;
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
 use CGI qw(:standard escape escapeHTML -oldstyle_urls);
 
+binmode STDOUT, ":encoding(UTF-8)";
 my $q       = new CGI; $q->charset('utf-8'); # for proper escapeHTML
 my $server_name = join(":", $q->server_name, $q->virtual_port);
 print $q->header(-charset=>'utf-8', -type=>'text/html');
