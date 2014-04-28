@@ -1,0 +1,33 @@
+#!/usr/bin/perl -w
+use strict;
+use diagnostics;
+use warnings FATAL => 'all', NONFATAL => 'redefine';
+use warnings;
+use utf8;
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
+use CGI qw(:standard escape escapeHTML);
+
+binmode STDOUT, ":encoding(UTF-8)";
+our $q     = new CGI; $q->charset('utf-8'); # for proper escapeHTML
+
+print $q->header(
+ -type=>'text/css',
+ #-charset=>'utf-8',
+);
+
+print <<'END_STYLESHEET';
+/* Updated on 2014-04-28 *************************************/
+.d_head .inner_service { width: 70px; xxfont-size: 18px; }
+.tit_service           { background-image: none; }
+
+@media only screen and -webkit-min-device-pixel-ratio15,
+       only screen and min-device-pixel-ratio15 {
+  .tit_service         { background-image: none; }
+}
+
+@media only screen and -webkit-min-device-pixel-ratio2,
+       only screen and min-device-pixel-ratio2 {
+  .tit_service         { background-image: none; }
+}
+END_STYLESHEET
+

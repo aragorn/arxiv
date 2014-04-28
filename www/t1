@@ -1,0 +1,328 @@
+#!/usr/bin/perl -w
+# template
+use strict;
+use diagnostics;
+use warnings FATAL => 'all', NONFATAL => 'redefine';
+use utf8;
+use feature "switch";
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
+use CGI::Pretty qw(:standard escape escapeHTML -utf8);
+use DBI;
+use File::Basename;
+use JSON;
+use Data::Dumper;
+use Benchmark;
+use Time::HiRes qw(gettimeofday tv_interval);
+use Encode;
+
+$Carp::Verbose = 1;
+CGI->compile();
+our ($BM1, $T01) = (new Benchmark, [gettimeofday]);
+
+
+our $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
+our $json  = new JSON; $json->allow_nonref->allow_blessed->utf8(0)->pretty(1);
+our $LOG_LEVEL = 0; # 0-debug, 1-info, 2-warn
+our $MODE_PRODUCTION = ( $q->server_port eq "80" and defined $ENV{GATEWAY_INTERFACE} ) ? 1 : 0;
+our $MODE_TESTING    = ( defined $ENV{GATEWAY_INTERFACE} ) ? 1 : 0;
+our $MODE_DEBUG      = 0;
+
+our $path_info = $q->path_info;
+$path_info = "/index.html" if not $path_info or $path_info eq "/";
+our ($cmd, $path, $suffix) = fileparse($path_info, ".xml", ".json", ".txt", ".html", );
+$suffix = ".json" unless $suffix;
+our $callback = param('callback');
+our $mode     = param('mode') || "";
+our $content_type = mime_type($suffix, $callback);
+our $full_url     = $q->url(-full=>1);
+our $absolute_url = $q->url(-absolute=>1);
+our $encoding = param('oe') || 'utf-8';
+if ( $encoding =~ m/euc-?kr|cp949/i ) { $encoding = 'cp949'; }
+else { $encoding = 'utf-8'; }
+
+$MODE_PRODUCTION = 1 if $mode eq q(production);
+$MODE_DEBUG      = 1 if $mode eq q(debug);
+$MODE_DEBUG      = 1 unless $q->server_port eq "80" or $q->server_port eq "8080";
+
+our %dispatch = (
+  index              => \&handler_index,
+);
+
+binmode STDOUT, ":encoding(UTF-8)" if $encoding eq 'utf-8';
+binmode STDOUT, ":encoding(CP949)" if $encoding eq 'cp949';
+
+our ($output, $header, $status);
+if ( defined $dispatch{$cmd} ) {
+  # Here we print http header in order to print accidental debug message while running handlers.
+  $status = "200 OK";
+  print $q->header(-charset=>$encoding,
+                   -type=>$content_type,
+                  );
+
+  $output = &{$dispatch{$cmd}}($cmd, $path, $suffix);
+  delete ${$output}{debug} if ref $output and $mode ne "debug";
+} else {
+  $status = "404 Not Found";
+  print $q->header(-status=>$status, -charset=>$encoding, -type=>$content_type);
+  
+  if ( $suffix eq ".txt" ) { $output = $status; }
+  else                     { $output = { status => $status, }; }
+
+  if ( $ENV{MOD_PERL} ) { # mod_perl ON
+    my $r = CGI->new->r;
+    $r->status(404);
+    $r->rflush; # force sending headers (with headers set by CGI)
+    $r->status(200); # tell Apache that everything was ok, dont send error doc.
+  }
+}
+
+if    ($suffix eq ".json")  { print jsonp_header($callback), $json->encode($output), jsonp_footer($callback); }
+elsif ($suffix eq ".xml")   { use XML::Simple; print XMLout($output, NoAttr=>1, RootName=>'xml', XMLDecl=>1); }
+elsif ($suffix eq ".html")  { print html_head(), html_body($output), html_footer() ; }
+elsif (ref $output) {
+  $Data::Dumper::Useperl = 0;       
+  $Data::Dumper::Useqq   = 1;
+  { no warnings 'redefine';
+      sub Data::Dumper::qquote {
+          my $s = shift;
+          return qq("$s");
+    }
+  }
+  print Dumper($output);
+}
+else                        { print $output; }
+
+exit;
+1; 
+
+##############################################################################
+sub mime_type {
+  my ($suffix, $callback) = (shift || q(.json), shift);
+  return q(text/plain)              if $suffix eq ".txt";
+  return q(text/html)               if $suffix eq ".html";
+  return q(application/javascript)  if $suffix eq ".json" and $callback;
+
+  # http://en.wikipedia.org/wiki/JSON#MIME_type
+  return q(application/json)        if $suffix eq ".json";
+  return q(text/plain);
+}
+
+sub jsonp_header {
+  my ($callback) = @_;
+  return <<END if $callback;
+if (typeof $callback === "function") $callback(
+END
+  return "";
+}
+  
+sub jsonp_footer {
+  my ($callback) = @_;
+  return <<END if $callback;
+);
+END
+  return "";
+}
+
+sub debug {
+  return if $MODE_PRODUCTION or $MODE_TESTING or $LOG_LEVEL > 0;
+  info(@_); 
+}
+  
+sub info {
+  return if $MODE_PRODUCTION or $MODE_TESTING or $LOG_LEVEL > 1;
+  
+  my ($message) = @_;
+  my ($BM2, $T02) = (new Benchmark, [gettimeofday]);
+  my $elapsed   = sprintf("%1.6f", tv_interval($T01, $T02));
+  my $benchmark = timestr(timediff($BM2, $BM1));
+  warn "$elapsed secs: $message\n";
+}
+  
+sub time_this {
+  my ($message) = @_;
+  my ($BM2, $T02) = (new Benchmark, [gettimeofday]);
+  my $elapsed   = sprintf("%1.6f", tv_interval($T01, $T02));
+  my $benchmark = timestr(timediff($BM2, $BM1));
+  return "$elapsed secs($benchmark) $message\n";
+}
+
+sub error {
+  my $status = "400 Bad Request";
+  print $q->header(-status=>$status, -charset=>$encoding, -type=>'text/plain');
+
+  print map { $_, "\n"; } @_;
+
+  my $request = CGI->new->r;
+  my $old_status = $request->status(200) if defined $request;
+  #print "old_status1 = $old_status\n";
+  #print "old_status2 = ", $request->status(200), "\n";
+
+  exit;
+}
+
+##############################################################################
+sub handler_index { 
+  return { map { $_ => "$full_url/$_$suffix" } sort keys %dispatch };
+}
+
+
+##############################################################################
+
+sub html_head {
+  my $home0_url = "/~aceadhoc/mileage";
+  my $home1_url = "/~aceadhoc/mileage";
+  my $css_url = "/css";
+
+  my $relative_url = $q->url(-absolute=>1, -path_info=>0);
+  my $title = $cmd; $title =~ s/_/ /go;
+  my $query = param('q');
+  my @head = (
+    meta({-http_equiv=>"Content-Type", -content=>"text/html; charset=$encoding"}),
+    head({-profile=>'http://www.w3.org/2005/10/profile'}),
+    Link({-rel=>'icon', -type=>'image/x-icon', -href=>'favicon.ico?v=20131211', -media=>'all'}),
+    meta({-name=>"viewport", -content=>"user-scalable=yes"
+                                      .", initial-scale=1.0, maximum-scale=4.0"
+                                      .", minimum-scale=0.5, width=device-width"}),
+    meta({-name=>"format-detection", -content=>"telephone=no"}),
+    Link({-rel=>'stylesheet', -href=>'http://m1.daumcdn.net/svc/attach/U0301/cssjs/estate/mobile/224/h.css'}),
+    Link({-rel=>'stylesheet', -href=>$css_url}),
+  );
+  return
+  start_html(-lang=>'ko_KR', -title=>$title, -head=>\@head,),
+  qq{<div id="daumWrap" class="other">
+<!--div id="daumHead" class="only_head"--><!-- 헤더만 있을경우 (GNB미노출시) : only_head 클래스 추가 -->
+<div id="daumHead" class="only_head xxtype_tab">
+  <div class="d_head" role="banner">
+    <h1 class="tit_daum">
+      <a href="$home0_url" id="daumLogo" class="link_daum"><img src="http://m1.daumcdn.net/svc/image/U03/common_icon/526776B4042520000A" width="47" height="22" alt="Home"></a>
+      <a href="$home1_url" id="daumServiceLogo" class="link_service"><span class="tit_service inner_service"><span class="ir_wa">마일리지</span></span></a>
+    </h1>
+ 
+    <h2 class="screen_out">유관서비스</h2>
+    <strong class="screen_out">관련 서비스</strong>
+    <a href="http://playwiki.daumcorp.com" class="link_relate">위키</a>
+    <a href="http://m.shopping.daum.net" class="link_relate">쇼핑하우</a>
+    <div class="wrap_util">
+      <a href="http://mtop.search.daum.net/" id="link_search" class="link_util"><span class="img_g ico_search">통합검색</span></a>
+      <a href="http://m.daum.net/site.daum?t__nil_header=sitemap" id="link_all" class="link_util"><span class="img_g ico_all">전체서비스</span></a>
+      <a id="web2app" class="link_util link_app" role="application"
+         href="javascript:;"
+         data-search-keyword="다음앱"
+         data-app-id="1"
+         data-app-scheme="daumapps://open"
+         data-app-intent="intent://open#Intent;scheme=daumapps;package=net.daum.android.daum;end"
+         data-appstore-url="itms-apps://itunes.apple.com/us/app/da-eum-daum/id365494029">
+        <img src="http://m1.daumcdn.net/svc/image/U03/common_icon/523121A6053D9F0002" width="24" height="25" alt="다음앱"></a>
+    </div><!--class="wrap_util"-->
+  </div><!--class="d_head" role="banner"-->
+<!--
+  <h2 class="screen_out">서비스명 메뉴</h2>
+  <ul class="gnb_comm" role="navigation">
+    <li class="on"><a href="/tab1" class="link_menu">탭1</a></li>
+    <li class=""><a href="/tab2" class="link_menu">탭2</a></li>
+    <li class=""><a href="/tab3" class="link_menu">탭3</a></li>
+    <li class=""><a href="/tab4" class="link_menu">탭4</a></li>
+  </ul>
+-->
+</div><!--id="daumHead" class="type_tab"-->
+<hr>
+
+  },
+  ;
+}
+
+sub html_body {
+  my $data = shift;
+  my $heading = $cmd;
+
+  my @html;
+  push @html,
+    div( {class=>"section_tab tab_type0"},
+      h4( {class=>"screen_out"}, "Formats" ),
+      ul( {class=>"tab"},
+        map {
+          li({class=>($_ eq "html" ? "on" : "")},
+            a({href=>"$absolute_url/$cmd.$_"
+                    .( query_string() ? "?".query_string() : "" )}, $_)
+              ) } qw(html json xml txt),
+      ),
+    ),
+    ;
+=rem
+<div class="section_tab tab_type0">
+	<h4 class="screen_out">주상복합_전국</h4>
+	<ul id="estateSiseInfoTab" class="tab">
+		<li class="on"><a href="javascript:;">전체</a></li>
+		<li class=""><a href="javascript:;">매매</a></li>
+		<li class=""><a href="javascript:;">전세</a></li>
+		<li class="lst"><a href="javascript:;">월세</a></li>
+	</ul>
+</div>
+
+   div({class=>'option'},
+    ( map { a({href=>"$absolute_url/$cmd.$_".(query_string()?"?".query_string():"")}, $_) } qw(txt json xml) ),
+    span({class=>'selected'}, 'html'),
+   ),
+=cut
+
+  if ($cmd eq q(index) ) {
+    push @html,
+      div( {class=>"section_list_text"},
+        h5( {class=>"tit_realty"}, $heading),
+        ul( {class=>"list"},
+          map { li( {class=>""}, a({href=>"$absolute_url/$_"}, $_) ) } sort keys %{$data},
+        ),
+      ),
+      ;
+  }
+
+  return
+  qq(<div id="daumContent">),
+  @html,
+  div( {class=>"section_list_text"},
+    h5( {class=>"tit_realty"}, "작은 제목 1"),
+    ul( {class=>"list"},
+      li("list 1"),
+      li("list 2"),
+      li("list 3"),
+    ),
+  ), # <div class="section_list_text">
+  div( {class=>"section_list_text"},
+    h5( {class=>"tit_realty"}, "작은 제목 2"),
+    ul( {class=>"list"},
+      li("list 1"),
+      li("list 2"),
+      li("list 3"),
+    ),
+  ), # <div class="section_list_text">
+  qq(</div><!--id="daumContent"-->),
+  ;
+}  
+
+sub html_footer {
+  return
+  qq{
+  <div id="footContent" class="foot_content" lang="ko" data-isdaumapp="false" style="display: block;">
+  <!--
+  <a href="http://search.daum.net/search?w=tot&amp;DA=BESE&amp;q=다음앱" role="application" class="link_app" id="footLinkApp"><img src="http://m1.daumcdn.net/svc/image/U03/common_icon/5231218705737F0002" class="ico_app" width="27" height="27" alt="다음앱"><span class="txt_app"><em class="emph_app">다음앱</em> 설치하기</span><span class="img_g ico_down"></span></a>
+  -->
+
+  <a href="#" class="link_top" id="footLinkTop"><span class="img_g ico_top"></span>맨위로</a></div>
+
+  <div id="daumFoot" role="contentinfo">
+    <ul>
+      <li><a href="http://m.daum.net/?t__nil_footer=daum">Daum</a></li>
+      <!--li id="daumMinidaum"><a href="https://logins.daum.net/accounts/loginform.do?mobilefull=1&amp;t__nil_footer=login&amp;url=/" class="minidaum_login">로그인</a></li-->
+      <!-- PC화면 바로가기를 사용할 경우 class="off"를 삭제 -->
+      <!--li><a href="javascript:;" onclick="xxx.utils.GoPcPage();" class="">PC화면</a></li-->
+      <li><a href="http://m.daum.net/site.daum?t__nil_footer=sitemap">전체보기</a></li>
+    </ul>
+
+    <address>&copy; Daum</address>
+  </div><!--id="footContent"-->},
+  qq(</div><!--id="daumWrap"-->),
+  end_html,
+  ;
+}
+
+
