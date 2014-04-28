@@ -11,7 +11,6 @@ else
 	SUFFIX=
 fi
 
-echo "SUFFIX=${SUFFIX}"
 # Since there is no sane way to get the parsed apache2 config in scripts, some
 # settings are defined via environment variables and then used in apache2ctl,
 # /etc/init.d/apache2, /etc/logrotate.d/apache2, etc.
@@ -37,4 +36,4 @@ export LANG
 ## If you need a higher file descriptor limit, uncomment and adjust the
 ## following line (default is 8192):
 #APACHE_ULIMIT_MAX_FILES='ulimit -n 65536'
-APACHE_ULIMIT_MAX_FILES=''
+APACHE_ULIMIT_MAX_FILES='ulimit -n 1024'

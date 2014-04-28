@@ -1,18 +1,22 @@
 <VirtualHost *:8080>
-    ServerAdmin aragorn@bawi.org
-    ServerName  aragorn.bawi.org
+  ServerAdmin aragorn@bawi.org
+  ServerName  aragorn.bawi.org
 
-    DocumentRoot /home/aragorn/arxiv/www
-	<Directory /home/aragorn/arxiv/www>
-		Options All
-		AllowOverride All
-		Order allow,deny
-		allow from all
-	</Directory>
+  DocumentRoot /home/aragorn/arxiv/www
+  <Directory /home/aragorn/arxiv/www>
+    Options All
+    AllowOverride All
+    Order allow,deny
+    allow from all
+    
+    SetHandler perl-script
+    PerlResponseHandler ModPerl::Registry
+  </Directory>
 
-	# Possible values include: debug, info, notice, warn, error, crit,
-	# alert, emerg.
-	LogLevel warn
-	ErrorLog ${APACHE_LOG_DIR}/arxiv-error.log
-	CustomLog ${APACHE_LOG_DIR}/arxiv-access.log combined
+
+  # Possible values include: debug, info, notice, warn, error, crit,
+  # alert, emerg.
+  LogLevel warn
+  ErrorLog ${APACHE_LOG_DIR}/arxiv-error.log
+  CustomLog ${APACHE_LOG_DIR}/arxiv-access.log combined
 </VirtualHost>
