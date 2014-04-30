@@ -4,98 +4,53 @@ use strict;
 use diagnostics;
 use warnings FATAL => 'all', NONFATAL => 'redefine';
 use utf8;
-use feature "switch";
-use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
-use CGI::Pretty qw(:standard escape escapeHTML -utf8);
-use DBI;
-use File::Basename;
-use JSON;
-use Data::Dumper;
-use Benchmark;
-use Time::HiRes qw(gettimeofday tv_interval);
-use Encode;
-
-$Carp::Verbose = 1;
-CGI->compile();
-our ($BM1, $T01) = (new Benchmark, [gettimeofday]);
-
-
-our $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
-our $json  = new JSON; $json->allow_nonref->allow_blessed->utf8(0)->pretty(1);
-our $LOG_LEVEL = 0; # 0-debug, 1-info, 2-warn
-our $MODE_PRODUCTION = ( $q->server_port eq "80" and defined $ENV{GATEWAY_INTERFACE} ) ? 1 : 0;
-our $MODE_TESTING    = ( defined $ENV{GATEWAY_INTERFACE} ) ? 1 : 0;
-our $MODE_DEBUG      = 0;
-
-our $path_info = $q->path_info;
-$path_info = "/index.html" if not $path_info or $path_info eq "/";
-our ($cmd, $path, $suffix) = fileparse($path_info, ".xml", ".json", ".txt", ".html", );
-$suffix = ".json" unless $suffix;
-our $callback = param('callback');
-our $mode     = param('mode') || "";
-our $content_type = mime_type($suffix, $callback);
-our $full_url     = $q->url(-full=>1);
-our $absolute_url = $q->url(-absolute=>1);
-our $encoding = param('oe') || 'utf-8';
-if ( $encoding =~ m/euc-?kr|cp949/i ) { $encoding = 'cp949'; }
-else { $encoding = 'utf-8'; }
-
-$MODE_PRODUCTION = 1 if $mode eq q(production);
-$MODE_DEBUG      = 1 if $mode eq q(debug);
-$MODE_DEBUG      = 1 unless $q->server_port eq "80" or $q->server_port eq "8080";
-
-our %dispatch = (
-  index              => \&handler_index,
-);
-
-binmode STDOUT, ":encoding(UTF-8)" if $encoding eq 'utf-8';
-binmode STDOUT, ":encoding(CP949)" if $encoding eq 'cp949';
-
-our ($output, $header, $status);
-if ( defined $dispatch{$cmd} ) {
-  # Here we print http header in order to print accidental debug message while running handlers.
-  $status = "200 OK";
-  print $q->header(-charset=>$encoding,
-                   -type=>$content_type,
-                  );
-
-  $output = &{$dispatch{$cmd}}($cmd, $path, $suffix);
-  delete ${$output}{debug} if ref $output and $mode ne "debug";
-} else {
-  $status = "404 Not Found";
-  print $q->header(-status=>$status, -charset=>$encoding, -type=>$content_type);
-  
-  if ( $suffix eq ".txt" ) { $output = $status; }
-  else                     { $output = { status => $status, }; }
-
-  if ( $ENV{MOD_PERL} ) { # mod_perl ON
-    my $r = CGI->new->r;
-    $r->status(404);
-    $r->rflush; # force sending headers (with headers set by CGI)
-    $r->status(200); # tell Apache that everything was ok, dont send error doc.
-  }
-}
-
-if    ($suffix eq ".json")  { print jsonp_header($callback), $json->encode($output), jsonp_footer($callback); }
-elsif ($suffix eq ".xml")   { use XML::Simple; print XMLout($output, NoAttr=>1, RootName=>'xml', XMLDecl=>1); }
-elsif ($suffix eq ".html")  { print html_head(), html_body($output), html_footer() ; }
-elsif (ref $output) {
-  $Data::Dumper::Useperl = 0;       
-  $Data::Dumper::Useqq   = 1;
-  { no warnings 'redefine';
-      sub Data::Dumper::qquote {
-          my $s = shift;
-          return qq("$s");
-    }
-  }
-  print Dumper($output);
-}
-else                        { print $output; }
-
-exit;
-1; 
+#BEGIN { $Exporter::Verbose=1 }
 
 ##############################################################################
+package MyCGI;
+use Exporter;
+use Benchmark;
+use Time::HiRes qw(gettimeofday tv_interval);
+
+our $VERSION     = 1.00;
+our @ISA         = qw(Exporter);
+our @EXPORT      = qw(debug info error);
+our @EXPORT_OK   = qw(encoding mime_type jsonp_header jsonp_footer time_this);
+our %EXPORT_TAGS = ( DEFAULT => [qw(&func1)],
+                     Both    => [qw(&func1 &func2)]);
+
+our ($BM1, $T01);
+our $LOG_LEVEL       = 0; # 0-debug, 1-info, 2-warn
+our $MODE_PRODUCTION = 0;
+our $MODE_TESTING    = 0;
+our $MODE_DEBUG      = 0;
+
+sub init_loglevel {
+  $BM1 = Benchmark->new() unless defined $BM1;
+  $T01 = [gettimeofday] unless defined $T01;
+
+  my $q = CGI->new();
+  my $mode = $q->param('mode') || "";
+  $MODE_PRODUCTION = ( $q->server_port eq "80" and defined $ENV{GATEWAY_INTERFACE} ) ? 1 : 0;
+  $MODE_TESTING    = ( defined $ENV{GATEWAY_INTERFACE} ) ? 1 : 0;
+
+  $MODE_PRODUCTION = 1 if $mode eq q(production);
+  $MODE_DEBUG      = 1 if $mode eq q(debug);
+  $MODE_DEBUG      = 1 unless $q->server_port eq "80" or $q->server_port eq "8080";
+  1;
+}
+
+sub encoding {
+  my $encoding = shift or return 'utf-8';
+
+  if ( $encoding =~ m/euc-?kr|cp949/i ) { $encoding = 'cp949'; }
+  else { $encoding = 'utf-8'; }
+
+  binmode STDOUT, ":encoding(UTF-8)" if $encoding eq 'utf-8';
+  binmode STDOUT, ":encoding(CP949)" if $encoding eq 'cp949';
+  return $encoding;
+}
+
 sub mime_type {
   my ($suffix, $callback) = (shift || q(.json), shift);
   return q(text/plain)              if $suffix eq ".txt";
@@ -148,36 +103,149 @@ sub time_this {
 
 sub error {
   my $status = "400 Bad Request";
-  print $q->header(-status=>$status, -charset=>$encoding, -type=>'text/plain');
+  my $q = CGI->new();
+  print $q->header(-status=>$status, -charset=>encoding(), -type=>'text/plain');
 
   print map { $_, "\n"; } @_;
 
-  my $request = CGI->new->r;
-  my $old_status = $request->status(200) if defined $request;
-  #print "old_status1 = $old_status\n";
-  #print "old_status2 = ", $request->status(200), "\n";
+  if ( $ENV{MOD_PERL} ) { # mod_perl ON
+    my $r = CGI->new->r;
+    $r->status(400);
+    $r->rflush; # force sending headers (with headers set by CGI)
+    $r->status(200); # tell Apache that everything was ok, dont send error doc.
+  }
 
   exit;
 }
 
+1;
+
+
 ##############################################################################
-sub handler_index { 
-  return { map { $_ => "$full_url/$_$suffix" } sort keys %dispatch };
+package main;
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
+use CGI::Pretty qw(:standard escape escapeHTML -utf8);
+use DBI;
+use File::Basename;
+use JSON;
+use Data::Dumper;
+use Time::HiRes qw(gettimeofday tv_interval);
+use Encode;
+
+import MyCGI qw(encoding mime_type jsonp_header jsonp_footer time_this); # debug info error);
+
+our $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
+our %dispatch = (
+  index              => \&handler_index,
+);
+encoding(param('oe'));
+
+main();
+
+exit;
+
+sub main {
+  $Carp::Verbose = 1;
+  CGI->compile();
+  
+  my $json  = new JSON; $json->allow_nonref->allow_blessed->utf8(0)->pretty(1);
+  
+  my $path_info = $q->path_info;
+  $path_info = "/index.html" if not $path_info or $path_info eq "/";
+  my ($cmd, $path, $suffix) = fileparse($path_info, ".xml", ".json", ".txt", ".html", );
+  $suffix = ".json" unless $suffix;
+  my $callback = param('callback');
+  my $mode     = param('mode') || "";
+  my $content_type = mime_type($suffix, $callback);
+  my $encoding = param('oe') || 'utf-8';
+  if ( $encoding =~ m/euc-?kr|cp949/i ) { $encoding = 'cp949'; }
+  else { $encoding = 'utf-8'; }
+
+  
+#$MODE_PRODUCTION = 1 if $mode eq q(production);
+#  $MODE_DEBUG      = 1 if $mode eq q(debug);
+#  $MODE_DEBUG      = 1 unless $q->server_port eq "80" or $q->server_port eq "8080";
+  
+  
+  binmode STDOUT, ":encoding(UTF-8)" if $encoding eq 'utf-8';
+  binmode STDOUT, ":encoding(CP949)" if $encoding eq 'cp949';
+  
+  my ($output, $header, $status);
+  if ( defined $dispatch{$cmd} ) {
+    # Here we print http header in order to print accidental debug message while running handlers.
+    $status = "200 OK";
+    print $q->header(-charset=>$encoding,
+                     -type=>$content_type,
+                    );
+  
+    $output = &{$dispatch{$cmd}}($cmd, $path, $suffix);
+    delete ${$output}{debug} if ref $output and $mode ne "debug";
+  } else {
+    $status = "404 Not Found";
+    print $q->header(-status=>$status, -charset=>$encoding, -type=>$content_type);
+    
+    if ( $suffix eq ".txt" ) { $output = $status; }
+    else                     { $output = { status => $status, }; }
+  
+    if ( $ENV{MOD_PERL} ) { # mod_perl ON
+      my $r = CGI->new->r;
+      $r->status(404);
+      $r->rflush; # force sending headers (with headers set by CGI)
+      $r->status(200); # tell Apache that everything was ok, dont send error doc.
+    }
+  }
+  
+  if    ($suffix eq ".json")  { print jsonp_header($callback), $json->encode($output), jsonp_footer($callback); }
+  elsif ($suffix eq ".xml")   { use XML::Simple; print XMLout($output, NoAttr=>1, RootName=>'xml', XMLDecl=>1); }
+  elsif ($suffix eq ".html")  { print generate_html($output,$cmd,$path,$suffix); }
+  elsif (ref $output) {
+    $Data::Dumper::Useperl = 0;       
+    $Data::Dumper::Useqq   = 1;
+    { no warnings 'redefine';
+        sub Data::Dumper::qquote {
+            my $s = shift;
+            return qq("$s");
+      }
+    }
+    print Dumper($output);
+  }
+  else                        { print $output; }
+  
+}
+
+##############################################################################
+package main;
+
+sub handler_index {
+  my ($cmd, $path, $suffix) = @_;
+  my $q = new CGI;
+  my $full_url = $q->url(-full=>1);
+  return { map { $_ => "$full_url/$_$suffix" } sort keys %main::dispatch };
 }
 
 
 ##############################################################################
 
+sub generate_html {
+  my ($output, $cmd, $path, $suffix) = @_;
+  return
+    html_head($cmd,$path,$suffix),
+    html_body($output,$cmd,$path,$suffix),
+    html_footer($cmd,$path,$suffix),
+  ;
+}
+
 sub html_head {
+  my ($cmd, $path, $suffix) = @_;
   my $home0_url = "/~aceadhoc/mileage";
   my $home1_url = "/~aceadhoc/mileage";
   my $css_url = "/css";
 
-  my $relative_url = $q->url(-absolute=>1, -path_info=>0);
+  my $relative_url = $main::q->url(-absolute=>1, -path_info=>0);
   my $title = $cmd; $title =~ s/_/ /go;
   my $query = param('q');
   my @head = (
-    meta({-http_equiv=>"Content-Type", -content=>"text/html; charset=$encoding"}),
+    meta({-http_equiv=>"Content-Type", -content=>"text/html; charset=".MyCGI::encoding()}),
     head({-profile=>'http://www.w3.org/2005/10/profile'}),
     Link({-rel=>'icon', -type=>'image/x-icon', -href=>'favicon.ico?v=20131211', -media=>'all'}),
     meta({-name=>"viewport", -content=>"user-scalable=yes"
@@ -232,8 +300,9 @@ sub html_head {
 }
 
 sub html_body {
-  my $data = shift;
+  my ($output, $cmd, $path, $suffix) = @_;
   my $heading = $cmd;
+  my $relative_url = $main::q->url(-absolute=>1, -path_info=>0);
 
   my @html;
   push @html,
@@ -242,7 +311,7 @@ sub html_body {
       ul( {class=>"tab"},
         map {
           li({class=>($_ eq "html" ? "on" : "")},
-            a({href=>"$absolute_url/$cmd.$_"
+            a({href=>"$relative_url/$cmd.$_"
                     .( query_string() ? "?".query_string() : "" )}, $_)
               ) } qw(html json xml txt),
       ),
@@ -270,7 +339,9 @@ sub html_body {
       div( {class=>"section_list_text"},
         h5( {class=>"tit_realty"}, $heading),
         ul( {class=>"list"},
-          map { li( {class=>""}, a({href=>"$absolute_url/$_"}, $_) ) } sort keys %{$data},
+          map { li( {class=>""},
+                    a({href=>"$relative_url/$_"}, $_)
+                  ) } sort keys %{$output},
         ),
       ),
       ;
@@ -321,8 +392,9 @@ sub html_footer {
     <address>&copy; Daum</address>
   </div><!--id="footContent"-->},
   qq(</div><!--id="daumWrap"-->),
-  end_html,
+  $q->end_html,
   ;
 }
 
+1;
 
