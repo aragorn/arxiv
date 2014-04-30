@@ -24,7 +24,11 @@ print "</table>";
 print h3("CGI::server_name()=", CGI::server_name());
 print h3("CGI::server_port()=", CGI::server_port());
 print h3("CGI::http('HTTP_HOST')=", CGI::http('HTTP_HOST'));
+print h3("CGI::url()=", url());
 print h3("CGI::url(-base=>1)=", url(-base=>1));
+print h3("CGI::url(-full=>1)=", url(-full=>1));
+print h3("CGI::url(-absolute=>1)=", url(-absolute=>1));
+print h3("CGI::url(-relative=>1)=", url(-relative=>1));
 
 print "<table>";
 my @http_keys = http();
@@ -39,7 +43,7 @@ foreach ( @values ) {
   print "<p>name=$_</p>\n";
 }
 
-my $value = param('name');
+my $value = param('name') || '';
 print "<p>scalar name=$value</p>\n";
 
 print p("END"), end_html;
