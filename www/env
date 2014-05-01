@@ -4,10 +4,10 @@ use diagnostics;
 use warnings FATAL => 'all', NONFATAL => 'redefine';
 use utf8;
 use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
-use CGI qw(:standard escape escapeHTML -oldstyle_urls);
+use CGI::Pretty qw(:standard escape escapeHTML -debug);
 
 binmode STDOUT, ":encoding(UTF-8)";
-my $q       = new CGI; $q->charset('utf-8'); # for proper escapeHTML
+my $q       = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
 my $server_name = join(":", $q->server_name, $q->virtual_port);
 print $q->header(-charset=>'utf-8', -type=>'text/html');
 
@@ -21,20 +21,44 @@ foreach ( sort keys %ENV )
 }
 print "</table>";
 
-print h3("CGI::server_name()=", CGI::server_name());
-print h3("CGI::server_port()=", CGI::server_port());
-print h3("CGI::http('HTTP_HOST')=", CGI::http('HTTP_HOST'));
-print h3("CGI::url()=", url());
-print h3("CGI::url(-base=>1)=", url(-base=>1));
-print h3("CGI::url(-full=>1)=", url(-full=>1));
-print h3("CGI::url(-absolute=>1)=", url(-absolute=>1));
-print h3("CGI::url(-relative=>1)=", url(-relative=>1));
+print table({-border=>undef},
+        caption('When Should You Eat Your Vegetables?'),
+        Tr({-align=>'CENTER',-valign=>'TOP'},
+        [
+           th(['Vegetable', 'Breakfast','Lunch','Dinner']),
+           td(['Tomatoes' , 'no', 'yes', 'yes']),
+           td(['Broccoli' , 'no', 'no',  'yes']),
+           td(['Onions'   , 'yes','yes', 'yes'])
+        ]
+        )
+     );
+
+print table({-border=>1},
+        caption('Some useful CGI methods'),
+        Tr(
+        [
+          th(['name', 'static call', 'method call']),
+          td(["server_name", CGI::server_name, $q->server_name]),
+          td(["server_port", CGI::server_port, $q->server_port]),
+          td(["http('HTTP_HOST')", CGI::http('HTTP_HOST'), $q->http('HTTP_HOST')]),
+          td(["url", CGI::url, $q->url]),
+          td(["url(-base=>1)", CGI::url(-base=>1), $q->url(-base=>1)]),
+          td(["url(-full=>1)", CGI::url(-full=>1), $q->url(-full=>1)]),
+          td(["url(-absolute=>1)", CGI::url(-absolute=>1), $q->url(-absolute=>1)]),
+          td(["url(-path=>1,-absolute=>1)", CGI::url(-path=>1,-absolute=>1), $q->url(-path=>1,-absolute=>1)]),
+          td(["url(-path=>1,-query=>1,-absolute=>1)", CGI::url(-path=>1,-query=>1,-absolute=>1), $q->url(-path=>1,-query=>1,-absolute=>1)]),
+          td(["url(-relative=>1)", CGI::url(-relative=>1), $q->url(-relative=>1)]),
+          td(["url(-path=>1,-relative=>1)", CGI::url(-path=>1,-relative=>1), $q->url(-path=>1,-relative=>1)]),
+          td(["url(-path=>1,-query=>1,-relative=>1)", CGI::url(-path=>1,-query=>1,-relative=>1), $q->url(-path=>1,-query=>1,-relative=>1)]),
+        ]
+        )
+      );
 
 print "<table>";
 my @http_keys = http();
 foreach ( sort @http_keys )
 {
-  print "<tr><th>$_</th><td>".CGI::http($_)."</td></tr>\n";
+  print Tr( th($_), td(CGI::http($_)), td($q->http($_)) );
 }
 print "</table>";
 
