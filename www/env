@@ -3,6 +3,7 @@ use strict;
 use diagnostics;
 use warnings FATAL => 'all', NONFATAL => 'redefine';
 use utf8;
+use FindBin; FindBin->again();
 use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
 use CGI::Pretty qw(:standard escape escapeHTML -debug);
 
@@ -47,9 +48,10 @@ print table({-border=>1},
           td(["url(-absolute=>1)", CGI::url(-absolute=>1), $q->url(-absolute=>1)]),
           td(["url(-path=>1,-absolute=>1)", CGI::url(-path=>1,-absolute=>1), $q->url(-path=>1,-absolute=>1)]),
           td(["url(-path=>1,-query=>1,-absolute=>1)", CGI::url(-path=>1,-query=>1,-absolute=>1), $q->url(-path=>1,-query=>1,-absolute=>1)]),
-          td(["url(-relative=>1)", CGI::url(-relative=>1), $q->url(-relative=>1)]),
-          td(["url(-path=>1,-relative=>1)", CGI::url(-path=>1,-relative=>1), $q->url(-path=>1,-relative=>1)]),
-          td(["url(-path=>1,-query=>1,-relative=>1)", CGI::url(-path=>1,-query=>1,-relative=>1), $q->url(-path=>1,-query=>1,-relative=>1)]),
+          td(["url(-relative=>1)", CGI->url(-relative=>1), $q->url(-relative=>1)]),
+          td(["url(-path=>1,-relative=>1)", CGI->url(-path=>1,-relative=>1), $q->url(-path=>1,-relative=>1)]),
+          td(["url(-path=>1,-query=>1,-relative=>1)", CGI->url(-path=>1,-query=>1,-relative=>1), $q->url(-path=>1,-query=>1,-relative=>1)]),
+          td(["path_info", CGI->path_info, $q->path_info]),
         ]
         )
       );
@@ -66,6 +68,16 @@ my @values = param('name');
 foreach ( @values ) {
   print "<p>name=$_</p>\n";
 }
+
+print table(
+        caption('FindBin variables'),
+        Tr(
+        [
+          td(['$FindBin::Bin', $FindBin::Bin]),
+          td(['$FindBin::Script', $FindBin::Script]),
+        ]
+        )
+      );
 
 my $value = param('name') || '';
 print "<p>scalar name=$value</p>\n";
