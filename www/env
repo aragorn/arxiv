@@ -4,6 +4,7 @@ use diagnostics;
 use warnings FATAL => 'all', NONFATAL => 'redefine';
 use utf8;
 use FindBin; FindBin->again();
+use lib "$FindBin::Bin/../lib/perl5";
 use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
 use CGI::Pretty qw(:standard escape escapeHTML -debug);
 
@@ -21,18 +22,6 @@ foreach ( sort keys %ENV )
   print "<tr><th>$_</th><td>$ENV{$_}</td></tr>\n";
 }
 print "</table>";
-
-print table({-border=>undef},
-        caption('When Should You Eat Your Vegetables?'),
-        Tr({-align=>'CENTER',-valign=>'TOP'},
-        [
-           th(['Vegetable', 'Breakfast','Lunch','Dinner']),
-           td(['Tomatoes' , 'no', 'yes', 'yes']),
-           td(['Broccoli' , 'no', 'no',  'yes']),
-           td(['Onions'   , 'yes','yes', 'yes'])
-        ]
-        )
-     );
 
 print table({-border=>1},
         caption('Some useful CGI methods'),
