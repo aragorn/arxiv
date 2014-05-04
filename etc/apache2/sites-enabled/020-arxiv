@@ -4,11 +4,8 @@
 
   DocumentRoot /home/aragorn/arxiv/www
   <Directory /home/aragorn/arxiv/www>
-    Options All
-    AllowOverride All
-    Order allow,deny
-    allow from all
-    
+    Require all granted
+    Options ExecCGI
     SetHandler perl-script
     PerlResponseHandler ModPerl::Registry
   </Directory>
