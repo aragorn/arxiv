@@ -1,0 +1,24 @@
+use Mojolicious::Lite;
+
+get '/' => {text => 'Hello, World!'};
+
+get '/env' => sub {
+  my $self = shift;
+  
+};
+
+get '/time' => 'clock';
+
+app->start;
+
+__DATA__
+
+@@ env.html.ep
+
+<h2>%ENV</h2>
+
+@@ clock.html.ep
+% use Time::Piece;
+% my $now = localtime;
+The time is <%= $now->hms %>.
+
