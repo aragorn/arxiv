@@ -4,16 +4,13 @@ use strict;
 use diagnostics;
 use warnings FATAL => 'all', NONFATAL => 'redefine';
 use utf8;
+BEGIN { $Exporter::Verbose=1 }
 use FindBin; FindBin->again();
-# print "Content-type: text/plain\n\n";
-# print $FindBin::Bin, "\n";
-# print $FindBin::Script, "\n";
-# print $FindBin::RealScript, "\n";
+print "Content-type: text/plain\n\n";
 use lib "$FindBin::Bin/../lib/perl5";
-
-#use FindBin::libs qw(subdir=perl5 subonly perl5lib); # qw(print);
+use lib "/home/aragorn/arxiv/lib/perl5";
 use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
-use CGI::Pretty qw(:standard escape escapeHTML -utf8 -debug);
+use CGI::Pretty qw(:standard escape escapeHTML -debug);
 use DBI;
 use File::Basename;
 use JSON;
@@ -24,7 +21,6 @@ use MyCGI qw(encoding mime_type jsonp_header jsonp_footer time_this); # debug in
 
 MyCGI::init_loglevel();
 
-our $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
 our %dispatch = (
   index              => \&handler_index,
 );
@@ -36,14 +32,12 @@ exit;
 
 sub main {
   $Carp::Verbose = 1;
-  CGI->compile();
+#CGI->compile();
   
   my $json  = new JSON; $json->allow_nonref->allow_blessed->utf8(0)->pretty(1);
   
+  my $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
   my $path_info = $q->path_info;
-#  print "path_info=$path_info\n";
-#print "url=", $q->url(-absolute=>1,-path=>1,-query=>1), "\n";
-#  die $path_info;
   $path_info = "/index.json" if not $path_info or $path_info eq "/";
   my ($cmd, $path, $suffix) = fileparse($path_info, ".xml", ".json", ".txt", ".html", );
   $suffix = ".json" unless $suffix;
@@ -133,6 +127,7 @@ sub html_head {
   my $home1_url = "/~aceadhoc/mileage";
   my $css_url = "/css";
 
+  my $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
   my $relative_url = $q->url(-absolute=>1, -path_info=>0);
   my $title = $cmd; $title =~ s/_/ /go;
   my $query = param('q');
@@ -194,6 +189,7 @@ sub html_head {
 sub html_body {
   my ($output, $cmd, $path, $suffix) = @_;
   my $heading = $cmd;
+  my $q       = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
   my $relative_url = $q->url(-absolute=>1, -path_info=>0);
 
   my @html;
@@ -284,7 +280,7 @@ sub html_footer {
     <address>&copy; Daum</address>
   </div><!--id="footContent"-->},
   qq(</div><!--id="daumWrap"-->),
-  $q->end_html,
+  end_html,
   ;
 }
 

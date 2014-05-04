@@ -124,7 +124,7 @@ sub error {
 ##############################################################################
 package main;
 use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
-use CGI::Pretty qw(:standard escape escapeHTML -utf8);
+use CGI::Pretty qw(:standard escape escapeHTML -utf8 -debug);
 use DBI;
 use File::Basename;
 use JSON;
@@ -133,6 +133,8 @@ use Time::HiRes qw(gettimeofday tv_interval);
 use Encode;
 
 import MyCGI qw(encoding mime_type jsonp_header jsonp_footer time_this); # debug info error);
+
+MyCGI::init_loglevel();
 
 our $q     = new CGI::Pretty; $q->charset('utf-8'); # for proper escapeHTML
 our %dispatch = (
@@ -151,6 +153,9 @@ sub main {
   my $json  = new JSON; $json->allow_nonref->allow_blessed->utf8(0)->pretty(1);
   
   my $path_info = $q->path_info;
+#  print "path_info=$path_info\n";
+#  print "url=", $q->url(-absolute=>1,-path=>1,-query=>1), "\n";
+#  die $path_info;
   $path_info = "/index.html" if not $path_info or $path_info eq "/";
   my ($cmd, $path, $suffix) = fileparse($path_info, ".xml", ".json", ".txt", ".html", );
   $suffix = ".json" unless $suffix;
