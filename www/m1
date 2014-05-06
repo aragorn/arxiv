@@ -1,0 +1,72 @@
+#!/usr/bin/env perl
+use Mojolicious::Lite;
+
+# Documentation browser under "/perldoc"
+plugin 'PODRenderer';
+
+get '/' => sub {
+  my $self = shift;
+  $self->render('index');
+};
+
+get '/env' => sub {
+  my $self = shift;
+
+  my %methods = class_methods($self);
+  $self->stash(methods=>\%methods);
+  $self->render('env');
+};
+
+app->start;
+
+sub class_methods { 
+    use Class::ISA;
+    my $obj = shift;
+    return unless ref( $obj );
+    my %meth_names;
+    foreach my $anc ( Class::ISA::self_and_super_path( ref $obj ), 'UNIVERSAL' ) {
+        no strict 'refs';
+        my $stash = \%{"$anc\::"};
+        my @funcs 
+            = grep { m/^[_\p{Alpha}]/                # begins with _ or alpha
+                   && !exists $meth_names{$_}        # no clobbering
+                   &&  defined *{$stash->{$_}}{CODE} # has a filled CODE slot
+                   } keys %$stash
+            ;
+        # assign to the "hash slice", keyed by all the entries in @funcs
+        # the value of $anc repeated as many times as elements in @funcs.
+        @meth_names{@funcs} = ( $anc ) x @funcs;
+        use strict 'refs';
+    }
+    return %meth_names;
+}
+
+__DATA__
+
+@@ index.html.ep
+% layout 'default';
+% title 'Welcome';
+Welcome to the Mojolicious real-time web framework!
+
+@@ layouts/default.html.ep
+<!DOCTYPE html>
+<html>
+  <head><title><%= title %></title></head>
+  <body><%= content %></body>
+</html>
+
+@@ env.html.ep
+% title 'Environment Variables';
+<h3>Environment Variables</h3>
+<table>
+<% foreach ( sort keys %ENV ) { %>
+  <tr><th><%= $_ %></th><td><%= $ENV{$_} %></td></tr>
+<% } %>
+</table>
+<h3>Methods of self</h3>
+<table>
+<% foreach ( sort keys %${methods} ) { %>
+  <tr><th><%= $_ %></th><td><%= $methods->{$_} %></td></tr>
+<% } %>
+</table>
+
