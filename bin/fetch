@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 
 use Modern::Perl;
+
 our @handlers = (
   q(//nid.naver.com/nidlogin.login) => \&login_form,
   q(//login) => \&login_form,
@@ -82,7 +83,6 @@ sub extract_urls {
 
   check_content_type($res) or return;
 
-  use HTML::TreeBuilder;
   use HTML::LinkExtractor;
   use Data::Dumper;
 
@@ -100,8 +100,6 @@ sub extract_urls {
   print "login links: ", Dumper(\@login), "\n";
   print "entire links: ", scalar @{$links}, "\n";
 
-#my $tree = HTML::Tree->new;
-#    $tree->parse($res->decoded_content);
   return;
 }
 
@@ -122,25 +120,37 @@ sub cookie_jar {
 
 sub find_handler {
   my $uri = shift;
-  print "DEBUG: uri=$uri\n";
+  #print "DEBUG: uri=$uri\n";
   my $it = natatime(2, @handlers);
   #print "DEBUG: handlers = ", Dumper(\@handlers), "\n";
   while ( my ($pattern, $handler) = $it->() )
   {
     die "Invalid handler: $handler" unless ref $handler eq "CODE";
-    print "DEBUG: ", $pattern, " -> ", sub_name($handler), "\n";
+    #print "DEBUG: ", $pattern, " -> ", sub_name($handler), "\n";
     if ( $uri =~ m/$pattern/i ) { return $handler; }
   }
-  print "DEBUG: end of find_handler()\n";
+  #print "DEBUG: end of find_handler()\n";
   return;
 }
 
 sub login_form {
+  my $res = shift;
+
+  print "DEBUG: HERE login_form\n";
+  check_content_type($res) or return;
+
+  use HTML::TreeBuilder;
+  my $tree = HTML::TreeBuilder->new;
+  $tree->parse($res->decoded_content);
+  my $form = $tree->look_down(_tag=>'form', id=>'frmNIDLogin', );
+  if ( $form ) {
+    print "DEBUG: form=", $form->as_HTML, "\n";
+  }
   ;
 }
 
 sub empty_handler {
-  ;
+  print ">> INFO: empty handler\n";
 }
 
 our @request_stack = ();
