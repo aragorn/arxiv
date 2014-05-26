@@ -1,0 +1,190 @@
+#!/usr/bin/env perl
+
+use Modern::Perl;
+our @handlers = (
+  q(//nid.naver.com/nidlogin.login) => \&login_form,
+  q(//login) => \&login_form,
+  q(//hello) => \&empty_handler,
+);
+
+say "hello, world!";
+my $init_url = shift || "http://cafe.naver.com";
+push_request($init_url);
+
+foreach ( 1..20 ) {
+  my $req = pop_request();
+  last unless $req;
+
+  print ">> ", $req->uri, "\n";
+  my $response = user_agent($req);
+  my $uri = $response->request->uri;
+  print "   ", $uri, "\n";
+  if ( my $h = find_handler($uri) ) {
+    print "! ", sub_name($h), "\n";
+    &{$h}($response);
+  } else {
+    my @links = extract_urls($response);
+    map { print "<< ", $_, "\n"; } @links;
+    push_request(@links);
+  }
+}
+#xget("http://cafe.naver.com");
+#xget("http://aragorn.bawi.org:8080/m1");
+
+exit;
+
+=rem
+use Mojo::UserAgent;
+
+say 'hello, world!';
+my $ua = Mojo::UserAgent->new;
+my $tx = $ua->get('cafe.naver.com');
+say $tx->success;
+#say $ua->get('cafe.naver.com');
+
+#say $ua->->res->body;
+=cut
+
+
+sub user_agent {
+  my $req = shift or return;
+  my $ua = shift;
+  use LWP::UserAgent;
+#use HTML::Query 'query'; # note lower case 'q'
+
+  unless ($ua) {
+     $ua = LWP::UserAgent->new;
+     $ua->agent("Mozilla/5.0 (Windows NT 6.1; WOW64) ".
+                "AppleWebKit/537.36 (KHTML, like Gecko) ".
+                "Chrome/34.0.1847.131 Safari/537.36");
+     $ua->show_progress(1);
+     $ua->cookie_jar({file=>"$ENV{HOME}/.cookie/cafe.naver.com",
+                      autosave=>1,
+                      ignore_discard=>1,});
+  }
+
+  my $res = $ua->request($req);
+
+  if ($res->is_success) {
+    print "   ", join " ",
+          $res->request->uri,
+          scalar $res->redirects,
+          $res->header("Content-type"), "\n" if 0;
+  }
+  else {
+    print $res->status_line;
+  }
+  return $res;
+}
+
+sub extract_urls {
+  my $res = shift;
+
+  check_content_type($res) or return;
+
+  use HTML::TreeBuilder;
+  use HTML::LinkExtractor;
+  use Data::Dumper;
+
+  my $LX = new HTML::LinkExtractor();
+  $LX->parse(\($res->decoded_content));
+  my $links = $LX->links;
+
+#print Dumper($links);
+  my @login = grep { $_->{tag} eq 'a'
+                 and $_->{href} =~ m/nidlogin/ } @{$links};
+  if ( scalar @login > 0 ) {
+    return ( map { $_->{href} } @login );
+  }
+
+  print "login links: ", Dumper(\@login), "\n";
+  print "entire links: ", scalar @{$links}, "\n";
+
+#my $tree = HTML::Tree->new;
+#    $tree->parse($res->decoded_content);
+  return;
+}
+
+sub check_content_type {
+  my $res = shift;
+  my $content_type = $res->header("Content-type");
+
+  if ($content_type =~ m!text/html!o) { return 1; }
+
+  return;
+}
+
+sub cookie_jar {
+
+}
+
+
+
+sub find_handler {
+  my $uri = shift;
+  print "DEBUG: uri=$uri\n";
+  my $it = natatime(2, @handlers);
+  #print "DEBUG: handlers = ", Dumper(\@handlers), "\n";
+  while ( my ($pattern, $handler) = $it->() )
+  {
+    die "Invalid handler: $handler" unless ref $handler eq "CODE";
+    print "DEBUG: ", $pattern, " -> ", sub_name($handler), "\n";
+    if ( $uri =~ m/$pattern/i ) { return $handler; }
+  }
+  print "DEBUG: end of find_handler()\n";
+  return;
+}
+
+sub login_form {
+  ;
+}
+
+sub empty_handler {
+  ;
+}
+
+our @request_stack = ();
+sub push_request {
+  foreach my $url ( @_ )
+  {
+    push @request_stack, HTTP::Request->new(GET => $url);
+  }
+}
+
+sub pop_request {
+  return pop @request_stack;
+}
+
+sub natatime ($@)
+{
+  my $n = shift;
+  my @list = @_;
+
+  return sub
+  {
+      return splice @list, 0, $n;
+  }
+}
+
+
+use B qw(svref_2object);
+
+sub sub_name {
+  return unless ref( my $r = shift );
+  return unless my $cv = svref_2object( $r );
+  return unless $cv->isa( 'B::CV' )
+            and my $gv = $cv->GV
+            ;
+  my $name = '';
+  if ( my $st = $gv->STASH ) { 
+      $name = $st->NAME . '::';
+  }
+  my $n = $gv->NAME;
+  if ( $n ) { 
+      $name .= $n;
+      if ( $n eq '__ANON__' ) { 
+          $name .= ' defined at ' . $gv->FILE . ':' . $gv->LINE;
+      }
+  }
+  return $name;
+}
