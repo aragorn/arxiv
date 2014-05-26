@@ -4,6 +4,30 @@ use Mojolicious::Lite;
 # Documentation browser under "/perldoc"
 plugin 'PODRenderer';
 
+get '/fetch' => sub {
+  my $self = shift;
+  my $url = $self->param('url');
+  unless ($url) {
+    $self->render(text=>"no url param");
+    return;
+  }
+  my @text = ();
+  my $req_ua = $self->req->headers->user_agent;
+  my $ua = $self->ua;
+  my $tx = $ua->get($url);
+  my $dom  = $ua->get($url)->res->dom;
+
+  push @text, "hello, world!";
+  push @text, "url=$url";
+  push @text, "req_ua=$req_ua";
+  push @text, "tx=" . $tx;
+  push @text, "dom=" . $dom;
+
+  $self->render(text=>join("\n", @text), format=>'txt');
+};
+
+
+
 get '/' => sub {
   my $self = shift;
   $self->render('index');
@@ -57,6 +81,14 @@ Welcome to the Mojolicious real-time web framework!
 
 @@ env.html.ep
 % title 'Environment Variables';
+<h3>ua</h3>
+<pre>
+<%= dumper $self->ua %>
+</pre>
+<h3>req</h3>
+<pre>
+<%= dumper $self->req %>
+</pre>
 <h3>Environment Variables</h3>
 <table>
 <% foreach ( sort keys %ENV ) { %>
