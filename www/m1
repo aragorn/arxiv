@@ -1,8 +1,27 @@
 #!/usr/bin/env perl
+use utf8;
 use Mojolicious::Lite;
+
 
 # Documentation browser under "/perldoc"
 plugin 'PODRenderer';
+
+get '/section.cafe.naver.com' => sub {
+  my $c = shift;
+
+  my $url = q(http://section.cafe.naver.com);
+  my $dom = $c->ua->get($url => sub {
+    my ($ua, $tx) = @_;
+    $c->render(data => b($tx->res->dom->at('title')->text)->encode('UTF-8'));
+  });
+  
+
+};
+
+get '/debug' => sub {
+  my $c = shift;
+  $c->unknown;
+};
 
 get '/fetch' => sub {
   my $self = shift;
